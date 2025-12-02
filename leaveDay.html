@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🏖 จัดการวันลา - AUTODIDACTIC</title>
+<style>
+/* ===== Global ===== */
+body {
+  font-family: 'Kanit', sans-serif;
+  background: linear-gradient(to bottom, #fff 0%, #fee 100%);
+  color: #c00;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ===== Container ===== */
+.container {
+  width: 100%;
+  max-width: 900px;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+h1, h2 {
+  text-align: center;
+  color: #c00;
+  margin-top: 0;
+}
+
+h2 { margin-bottom: 15px; }
+
+/* ===== Logo ===== */
+.logo-container {
+  text-align: center;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.logo-box {
+  background: #fff;
+  padding: 10px 20px;
+  border-radius: 12px;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+  display: inline-block;
+}
+
+.logo-box img {
+  width: 60px;
+  height: auto;
+  display: block;
+}
+
+/* ===== Back Button ===== */
+.back-btn {
+  display: inline-block;
+  background: #c00;
+  color: #fff;
+  padding: 10px 20px;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: bold;
+  margin-bottom: 20px;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+  transition: 0.3s;
+  text-align: center;
+}
+.back-btn:hover { background: #a00; }
+
+/* ===== Sections ===== */
+section {
+  border: 2px solid #c00;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px auto;
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+  box-sizing: border-box;
+}
+
+/* ===== Form Elements ===== */
+label {
+  display: block;
+  margin-bottom: 15px;
+  font-weight: 500;
+}
+
+select, input[type="date"] {
+  padding: 10px;
+  border-radius: 6px;
+  border: 2px solid #c00;
+  width: 100%;
+  margin-top: 6px;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+
+button {
+  background: #c00;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 20px;
+  cursor: pointer;
+  font-weight: bold;
+  margin-top: 10px;
+  transition: 0.3s;
+  width: 100%;
+  font-size: 16px;
+}
+
+button:hover { background: #a00; }
+
+/* ===== Leave List ===== */
+.leave-item {
+  border: 1px solid #c00;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+  background: #fff7f7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.leave-item button {
+  margin-top: 8px;
+  padding: 10px;
+}
+
+/* ===== File Input ===== */
+input[type="file"] {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #c00;
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ===== Responsive ===== */
+@media(max-width:700px){
+  .container { padding: 15px; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 18px; }
+  section { padding: 15px; }
+  .leave-item { font-size: 14px; }
+}
+
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="logo-container">
+    <div class="logo-box">
+      <img src="ad_logo-Photoroom.png" alt="Logo">
+    </div>
+  </div>
+
+  <h1>🏖 จัดการวันลา</h1>
+  <div style="text-align: center;">
+    <a href="index.html" class="back-btn">⬅️ กลับหน้าหลัก</a>
+  </div>
+
+  <section>
+    <h2>➕ เพิ่มวันลาใหม่</h2>
+    <div>
+      <label>ชื่อพนักงาน:
+        <select id="leaveWorker">
+          <option value="">-- เลือกชื่อผู้ปฏิบัติงาน --</option>
+        </select>
+      </label>
+      <label>เริ่ม:
+        <input type="date" id="leaveStart">
+      </label>
+      <label>สิ้นสุด:
+        <input type="date" id="leaveEnd">
+      </label>
+      <label>เหตุผล:
+        <select id="leaveReason">
+          <option value="">-- เลือกเหตุผลการลา --</option>
+          <option value="ลากิจ">ลากิจ</option>
+          <option value="ลาป่วย">ลาป่วย</option>
+          <option value="ลาพักร้อน">ลาพักร้อน</option>
+        </select>
+      </label>
+      <button id="addLeaveBtn">บันทึกวันลา</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>📅 รายการวันลา</h2>
+    <div id="leaveList">⏳ กำลังโหลด...</div>
+  </section>
+</div>
+
+<script type="module">
+
+/* ------------------ Firebase (events-666d6) ------------------ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { 
+  getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc 
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getStorage, ref, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+/* --- ใช้ตามที่คุณให้มา --- */
+const firebaseConfig = {
+  apiKey: "AIzaSyAXayBBLVSohNCIsnlWRq6rD0BUbW70MGk",
+  authDomain: "events-666d6.firebaseapp.com",
+  projectId: "events-666d6",
+  storageBucket: "events-666d6.firebasestorage.app",
+  messagingSenderId: "589078390914",
+  appId: "1:589078390914:web:480ce96137ffac835aac9b",
+  measurementId: "G-97GD75S814"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+/* ------------------ Load workers ------------------ */
+async function loadWorkers(){
+  const workerSelect = document.getElementById("leaveWorker");
+  const snap = await getDocs(collection(db, "workers"));
+  snap.forEach(d=>{
+    const name = d.data().name;
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    workerSelect.appendChild(opt);
+  });
+}
+
+/* ------------------ Load leaves ------------------ */
+async function loadLeaves(){
+  const leaveList = document.getElementById("leaveList");
+  leaveList.innerHTML = "⏳ กำลังโหลด...";
+
+  const snap = await getDocs(collection(db, "leaves"));
+  if (snap.empty) {
+    leaveList.innerHTML = "<i>ยังไม่มีการบันทึกวันลา</i>";
+    return;
+  }
+
+  leaveList.innerHTML = "";
+  snap.forEach(d=>{
+    const data = d.data();
+    const div = document.createElement("div");
+    div.className = "leave-item";
+    div.innerHTML = `
+      <b>${data.name}</b>
+      📅 ${data.start} → ${data.end}<br>
+      📝 เหตุผล: ${data.reason || "-"}<br>
+      ${data.fileUrl ? `📎 <a href="${data.fileUrl}" target="_blank">เปิดเอกสาร</a><br>` : ""}
+      <input type="file" id="file-${d.id}" accept=".pdf,.jpg,.jpeg,.png">
+      <button onclick="uploadFile('${d.id}')">📤 แนบเอกสาร</button>
+      <button onclick="deleteLeave('${d.id}')">❌ ลบ</button>
+    `;
+    leaveList.appendChild(div);
+  });
+}
+
+/* ------------------ Add leave ------------------ */
+document.getElementById("addLeaveBtn").addEventListener("click", async ()=>{
+  const name = document.getElementById("leaveWorker").value;
+  const start = document.getElementById("leaveStart").value;
+  const end = document.getElementById("leaveEnd").value;
+  const reason = document.getElementById("leaveReason").value;
+
+  if(!name || !start || !end || !reason) 
+    return alert("⚠️ กรุณากรอกข้อมูลให้ครบ");
+
+  await addDoc(collection(db, "leaves"), { 
+    name, start, end, reason 
+  });
+
+  document.getElementById("leaveWorker").value = "";
+  document.getElementById("leaveStart").value = "";
+  document.getElementById("leaveEnd").value = "";
+  document.getElementById("leaveReason").value = "";
+
+  loadLeaves();
+  alert("✅ บันทึกวันลาเรียบร้อยแล้ว");
+});
+
+/* ------------------ Upload file ------------------ */
+window.uploadFile = async id => {
+  const fileInput = document.getElementById(`file-${id}`);
+  const file = fileInput.files[0];
+  if (!file) return alert("⚠️ กรุณาเลือกไฟล์ก่อนอัปโหลด");
+
+  const fileRef = ref(storage, `leaves/${id}/${file.name}`);
+
+  try {
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+
+    await updateDoc(doc(db, "leaves", id), { fileUrl: url });
+
+    alert("✅ แนบเอกสารสำเร็จ");
+    loadLeaves();
+
+  } catch (err) {
+    console.error(err);
+    alert("❌ เกิดข้อผิดพลาดในการอัปโหลด");
+  }
+};
+
+/* ------------------ Delete leave ------------------ */
+window.deleteLeave = async id=>{
+  if(confirm("ต้องการลบวันลานี้ใช่หรือไม่?")){
+    await deleteDoc(doc(db, "leaves", id));
+    loadLeaves();
+  }
+};
+
+loadWorkers();
+loadLeaves();
+
+</script>
+
+</body>
+</html>

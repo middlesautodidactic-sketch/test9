@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>📊 สรุปจำนวนครั้งที่ออกปฏิบัติงานรายเดือน (แยกตามบุคคล)</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+  font-family: 'Prompt', sans-serif;
+  background: #fff;
+  color: #c00;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+header {
+  background: #c00;
+  color: #fff;
+  padding: 12px 20px;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+}
+.manager-btn, .export-btn {
+  display: inline-block; 
+  margin-bottom: 15px; 
+  margin-right: 10px;
+  background: #c00; 
+  color: #fff; 
+  padding: 8px 16px;
+  border-radius: 8px; 
+  text-decoration: none; 
+  font-weight: bold;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15); 
+  transition: 0.3s;
+}
+.manager-btn:hover, .export-btn:hover { background:#a00; }
+
+#chartContainer {
+  flex: 1;
+  max-width: 1200px;
+  margin: 20px auto 40px;
+  padding: 20px;
+  background: #fff;
+  border: 2px solid #c00;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+canvas {
+  width: 100%;
+  height: 650px;
+}
+footer {
+  background: #c00;
+  color: #fff;
+  text-align: center;
+  padding: 10px;
+  font-size: 14px;
+}
+.filter-box {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0 20px;
+  flex-wrap: wrap;
+}
+select {
+  padding: 8px;
+  border: 2px solid #c00;
+  border-radius: 8px;
+  color: #c00;
+  font-weight: bold;
+}
+button.filter-btn {
+  background: #c00;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: bold;
+}
+button.filter-btn:hover { background: #a00; }
+</style>
+</head>
+<body>
+
+<header>📊 สรุปจำนวนครั้งที่ออกปฏิบัติงานรายเดือน (แยกตามบุคคล)</header><br>
+
+<div style="text-align:center;">
+  <a href="manager.html" class="manager-btn">Back to Manager</a>
+  <a href="export-csvM.html" class="export-btn">Export file to CSV</a>
+</div>
+
+<div class="filter-box">
+  <label>เริ่มเดือน:</label>
+  <select id="startMonth"></select>
+  <label>ถึงเดือน:</label>
+  <select id="endMonth"></select>
+  <button class="filter-btn" id="applyFilter">แสดงผลรวม</button>
+</div>
+
+<div id="chartContainer">
+  <canvas id="workChart"></canvas>
+</div>
+
+<footer>&copy; 2025 AUTODIDACTIC</footer>
+
+<script type="module">
+// ✅ Firebase
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCua-GV6L-yz4cQNlSeQwRFNyOvzRQKO9Q",
+  authDomain: "events-92057.firebaseapp.com",
+  projectId: "events-92057",
+  storageBucket: "events-92057.appspot.com",
+  messagingSenderId: "33581889849",
+  appId: "1:33581889849:web:184cede4ec9f2eb363d0e8"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+
+function getMonthKey(dateField) {
+  let date;
+  if (typeof dateField === "string") {
+    date = new Date(dateField);
+  } else if (dateField?.seconds) {
+    date = new Date(dateField.seconds * 1000);
+  } else return null;
+
+  if (isNaN(date)) return null;
+  return `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+async function loadWorkData() {
+  const snapshot = await getDocs(collection(db, "events"));
+  const monthlyData = {};
+  const allWorkers = new Set();
+
+  snapshot.forEach(docItem => {
+    const data = docItem.data();
+    const monthKey = getMonthKey(data.start);
+    if (!monthKey) return;
+
+    if (Array.isArray(data.workers)) {
+      data.workers.forEach(name => {
+        if (!name) return;
+        allWorkers.add(name);
+        if (!monthlyData[monthKey]) monthlyData[monthKey] = {};
+        monthlyData[monthKey][name] = (monthlyData[monthKey][name] || 0) + 1;
+      });
+    } else if (typeof data.workers === "string" && data.workers.trim() !== "") {
+      const name = data.workers.trim();
+      allWorkers.add(name);
+      if (!monthlyData[monthKey]) monthlyData[monthKey] = {};
+      monthlyData[monthKey][name] = (monthlyData[monthKey][name] || 0) + 1;
+    }
+  });
+
+  return { monthlyData, allWorkers: [...allWorkers] };
+}
+
+let chartInstance = null;
+
+async function renderChart(filteredMonths = null) {
+  const { monthlyData, allWorkers } = await loadWorkData();
+
+  let months = Object.keys(monthlyData).sort((a, b) => {
+    const [ma, ya] = a.split(" ");
+    const [mb, yb] = b.split(" ");
+    return (parseInt(ya) - parseInt(yb)) || (monthNames.indexOf(ma) - monthNames.indexOf(mb));
+  });
+
+  if (filteredMonths) months = months.filter(m => filteredMonths.includes(m));
+
+  if (months.length === 0) {
+    document.getElementById("chartContainer").innerHTML = "<p>❌ ไม่พบข้อมูลวันที่ใน Firestore</p>";
+    return;
+  }
+
+  // ✅ รวมผลรวมของเดือนที่เลือก
+  const totalPerPerson = {};
+  allWorkers.forEach(name => totalPerPerson[name] = 0);
+
+  months.forEach(month => {
+    const monthData = monthlyData[month];
+    for (const name in monthData) {
+      totalPerPerson[name] += monthData[name];
+    }
+  });
+
+  const labels = Object.keys(totalPerPerson);
+  const values = Object.values(totalPerPerson);
+
+  const ctx = document.getElementById("workChart").getContext("2d");
+
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: filteredMonths ? `ผลรวมเดือน ${filteredMonths.join(", ")}` : "รวมทุกเดือน",
+        data: values,
+        backgroundColor: "#c00",
+        borderRadius: 8
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: "จำนวนครั้งที่แต่ละคนออกปฏิบัติงาน (รวมเดือนที่เลือก)",
+          color: "#c00",
+          font: { size: 18 }
+        },
+        legend: { display: true },
+      },
+      scales: {
+        x: { beginAtZero: true, ticks: { stepSize: 1, color: "#333" } },
+        y: { ticks: { color: "#333" } }
+      }
+    }
+  });
+}
+
+function setupMonthSelectors(allMonths) {
+  const startSel = document.getElementById("startMonth");
+  const endSel = document.getElementById("endMonth");
+  startSel.innerHTML = "";
+  endSel.innerHTML = "";
+  allMonths.forEach(m => {
+    startSel.innerHTML += `<option value="${m}">${m}</option>`;
+    endSel.innerHTML += `<option value="${m}">${m}</option>`;
+  });
+  endSel.selectedIndex = allMonths.length - 1;
+}
+
+(async function init() {
+  const { monthlyData } = await loadWorkData();
+  const months = Object.keys(monthlyData).sort((a, b) => {
+    const [ma, ya] = a.split(" ");
+    const [mb, yb] = b.split(" ");
+    return (parseInt(ya) - parseInt(yb)) || (monthNames.indexOf(ma) - monthNames.indexOf(mb));
+  });
+  setupMonthSelectors(months);
+  renderChart();
+
+  document.getElementById("applyFilter").addEventListener("click", () => {
+    const start = document.getElementById("startMonth").value;
+    const end = document.getElementById("endMonth").value;
+    if (!start || !end) return alert("กรุณาเลือกช่วงเดือนให้ครบ");
+
+    const sIndex = months.indexOf(start);
+    const eIndex = months.indexOf(end);
+    if (sIndex > eIndex) return alert("ลำดับเดือนเริ่มต้นต้องน้อยกว่าหรือเท่ากับเดือนสิ้นสุด");
+
+    const selectedMonths = months.slice(sIndex, eIndex + 1);
+    renderChart(selectedMonths);
+  });
+})();
+</script>
+
+</body>
+</html>

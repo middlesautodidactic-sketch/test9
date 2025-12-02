@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Export CSV - รายงานการออกปฏิบัติงาน (หลายเดือน)</title>
+  <style>
+    body { font-family: sans-serif; padding: 18px; background:#fff; color:#111; }
+    h1 { color:#c00; text-align:left; }
+    .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+    label { font-weight:600; margin-right:8px; }
+    input[type="month"] { padding:6px 8px; border:1px solid #ccc; border-radius:6px; }
+    button { background:#c00; color:#fff; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:700; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    table { width:100%; border-collapse:collapse; margin-top:14px; }
+    th, td { padding:8px 10px; border:1px solid #e5e5e5; text-align:left; }
+    th { background:#f8f8f8; }
+    .small { font-size:13px; color:#555; }
+    #message { margin-top:12px; color:#555; }
+    .manager-btn{
+      display:inline-block; margin-bottom:15px; margin-right:10px;
+      background:#c00; color:#fff; padding:8px 16px;
+      border-radius:8px; text-decoration:none; font-weight:bold;
+      box-shadow:0 3px 6px rgba(0,0,0,0.15); transition:0.3s;
+    }
+    .manager-btn:hover{ background:#a00; }
+  </style>
+</head>
+<body>
+  <div>
+    <a href="admin.html" class="manager-btn">Back to Admin</a>
+  </div>
+  <h1>📥 Export CSV — รายงานการออกปฏิบัติงาน (หลายเดือน)</h1>
+
+  <div class="controls">
+    <div>
+      <label for="startMonth">เริ่มเดือน:</label>
+      <input id="startMonth" type="month" />
+    </div>
+    <div>
+      <label for="endMonth">ถึงเดือน:</label>
+      <input id="endMonth" type="month" />
+    </div>
+    <div>
+      <label for="includeZero" class="small">แสดงคนที่ไม่มีรายการด้วย</label>
+      <input id="includeZero" type="checkbox" checked />
+    </div>
+    <div>
+      <button id="loadBtn">โหลดข้อมูล</button>
+    </div>
+    <div>
+      <button id="exportBtn" disabled>⬇️ ดาวน์โหลด CSV</button>
+    </div>
+  </div>
+
+  <div id="message" class="small">เลือกช่วงเดือน แล้วกด "โหลดข้อมูล"</div>
+  <div id="tableWrap"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCua-GV6L-yz4cQNlSeQwRFNyOvzRQKO9Q",
+      authDomain: "events-92057.firebaseapp.com",
+      projectId: "events-92057",
+      storageBucket: "events-92057.appspot.com",
+      messagingSenderId: "33581889849",
+      appId: "1:33581889849:web:184cede4ec9f2eb363d0e8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const startMonth = document.getElementById("startMonth");
+    const endMonth = document.getElementById("endMonth");
+    const includeZeroCheckbox = document.getElementById("includeZero");
+    const loadBtn = document.getElementById("loadBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const tableWrap = document.getElementById("tableWrap");
+    const message = document.getElementById("message");
+
+    let currentReport = [];
+
+    function parseYMD(ymd){
+      if(!ymd) return null;
+      const parts = ymd.split("-");
+      if(parts.length < 3) return null;
+      return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    }
+
+    function getMonthRange(startStr, endStr){
+      const [sy, sm] = startStr.split("-").map(Number);
+      const [ey, em] = endStr.split("-").map(Number);
+      const start = new Date(sy, sm - 1, 1);
+      const end = new Date(ey, em, 1); // exclusive
+      return { start, end };
+    }
+
+    loadBtn.addEventListener("click", async ()=>{
+      const sVal = startMonth.value;
+      const eVal = endMonth.value;
+      if(!sVal || !eVal){ alert("กรุณาเลือกช่วงเดือนให้ครบ"); return; }
+
+      const { start, end } = getMonthRange(sVal, eVal);
+      if(start >= end){ alert("ช่วงเดือนไม่ถูกต้อง"); return; }
+
+      loadBtn.disabled = true;
+      exportBtn.disabled = true;
+      tableWrap.innerHTML = "";
+      message.textContent = "กำลังโหลดข้อมูล...";
+
+      try{
+        const eventsSnap = await getDocs(collection(db,"events"));
+        const events = [];
+        eventsSnap.forEach(s => {
+          const d = s.data();
+          d._id = s.id;
+          events.push(d);
+        });
+
+        const workersSnap = await getDocs(collection(db,"workers"));
+        const workers = [];
+        workersSnap.forEach(s => {
+          const name = s.data().name;
+          if(name) workers.push(name);
+        });
+
+        const stats = new Map();
+        const ensureWorker = name => {
+          if(!name) return;
+          if(!stats.has(name)) stats.set(name, { name, total:0, finished:0, notFinished:0 });
+        };
+
+        if(includeZeroCheckbox.checked){
+          workers.forEach(w => ensureWorker(w));
+        }
+
+        for(const ev of events){
+          const startDate = parseYMD(ev.start);
+          if(!startDate) continue;
+          if(startDate >= start && startDate < end){
+            const workerList = Array.isArray(ev.workers) ? ev.workers : (ev.workers ? [ev.workers] : []);
+            for(const w of workerList){
+              ensureWorker(w);
+              const rec = stats.get(w);
+              rec.total++;
+              if(ev.status === "เรียบร้อย") rec.finished++;
+              if(ev.status === "ไม่เรียบร้อย") rec.notFinished++;
+            }
+          }
+        }
+
+        const rows = Array.from(stats.values()).sort((a,b)=> a.name.localeCompare(b.name,"th"));
+        if(rows.length === 0){
+          tableWrap.innerHTML = `<div class="small">ไม่พบข้อมูลในช่วงที่เลือก</div>`;
+          message.textContent = "ไม่มีข้อมูลในช่วงเดือนที่เลือก";
+          return;
+        }
+
+        // รวมผลรวมทุกคน
+        const totalSum = rows.reduce((acc, r) => {
+          acc.total += r.total;
+          acc.finished += r.finished;
+          acc.notFinished += r.notFinished;
+          return acc;
+        }, { total:0, finished:0, notFinished:0 });
+
+        let html = `<table>
+          <thead>
+            <tr><th>ชื่อผู้ปฏิบัติงาน</th><th>รวมทั้งหมด</th><th>งานเรียบร้อย</th><th>งานไม่เรียบร้อย</th></tr>
+          </thead><tbody>`;
+        rows.forEach(r=>{
+          html += `<tr>
+            <td>${r.name}</td>
+            <td>${r.total}</td>
+            <td>${r.finished}</td>
+            <td>${r.notFinished}</td>
+          </tr>`;
+        });
+        html += `<tr style="font-weight:bold;background:#f5f5f5;">
+            <td>รวมทั้งหมด</td>
+            <td>${totalSum.total}</td>
+            <td>${totalSum.finished}</td>
+            <td>${totalSum.notFinished}</td>
+        </tr></tbody></table>`;
+
+        // 🔹 เพิ่มสรุปผลรายบุคคลแบบรวม (optional)
+        html += `<h3 style="margin-top:30px;color:#c00;">📊 สรุปผลรวมรายบุคคล</h3>`;
+        html += `<ul>`;
+        rows.forEach(r=>{
+          html += `<li><b>${r.name}</b>: รวม ${r.total} ครั้ง (เรียบร้อย ${r.finished}, ไม่เรียบร้อย ${r.notFinished})</li>`;
+        });
+        html += `</ul>`;
+
+        tableWrap.innerHTML = html;
+        message.textContent = `สรุปผลรวมช่วง ${sVal} ถึง ${eVal}`;
+        exportBtn.disabled = false;
+        currentReport = { rows, totalSum, sVal, eVal };
+
+      }catch(err){
+        console.error(err);
+        alert("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+      }finally{
+        loadBtn.disabled = false;
+      }
+    });
+
+   // ✅ Export CSV
+exportBtn.addEventListener("click", ()=>{
+  if(!currentReport?.rows?.length) return alert("ไม่มีข้อมูลให้ export");
+
+  const { rows, totalSum, sVal, eVal } = currentReport;
+  const header = ["ช่วงเดือน","ชื่อผู้ปฏิบัติงาน","จำนวนครั้งทั้งหมด","งานเรียบร้อย","งานไม่เรียบร้อย"];
+  const lines = [header.join(",")];
+
+  // 🔹 เพิ่มข้อมูลรายบุคคล
+  rows.forEach(r=>{
+    lines.push([
+      `"${sVal} ถึง ${eVal}"`,
+      `"${r.name}"`,
+      r.total,
+      r.finished,
+      r.notFinished
+    ].join(","));
+  });
+
+  // 🔹 เพิ่มผลรวมรวมท้ายตาราง
+  lines.push(["\"รวมทั้งหมด\"","",totalSum.total,totalSum.finished,totalSum.notFinished].join(","));
+
+  // 🔹 ช่องว่างคั่นระหว่างตารางกับสรุป
+  lines.push("");
+  lines.push("📊 สรุปผลรวมรายบุคคล");
+
+  // 🔹 เพิ่มสรุปแต่ละบุคคล (อ่านง่าย)
+  rows.forEach(r=>{
+    lines.push([
+      `"${r.name}"`,
+      `รวม ${r.total} ครั้ง`,
+      `เรียบร้อย ${r.finished}`,
+      `ไม่เรียบร้อย ${r.notFinished}`
+    ].join(","));
+  });
+
+  // 🔹 เพิ่มสรุปผลรวมทั้งหมดท้ายสุด
+  lines.push("");
+  lines.push("📈 สรุปผลรวมทั้งหมด");
+  lines.push(`ช่วงเดือน,"${sVal} ถึง ${eVal}"`);
+  lines.push(`จำนวนงานทั้งหมด,${totalSum.total}`);
+  lines.push(`งานเรียบร้อย,${totalSum.finished}`);
+  lines.push(`งานไม่เรียบร้อย,${totalSum.notFinished}`);
+
+  // ✅ สร้างและดาวน์โหลดไฟล์ CSV
+  const csv = "\uFEFF" + lines.join("\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `รายงานปฏิบัติงาน-${sVal}_ถึง_${eVal}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+  </script>
+</body>
+</html>
